@@ -45,7 +45,7 @@ fn main() -> eframe::Result {
     //we create a mspc channel to communicate with the search worker
     let (tx, rx): (mpsc::Sender<Vec<File>>, mpsc::Receiver<Vec<File>>) = mpsc::channel();
     
-    let mut files = get_filtered_content_dir(&currentPath, &"".to_string(), false).unwrap_or_default();
+    files = get_filtered_content_dir(&currentPath, &"".to_string(), false).unwrap_or_default();
     let mut latestScannedFolder = currentPath.clone();
     let mut searchString = "".to_string();
     //getContentDir(&currentPath).;
@@ -77,22 +77,15 @@ fn main() -> eframe::Result {
                 let cloned_tx = tx.clone();
                 let clonedSearchString = searchString.clone();
                 let searchWorker = thread::spawn(move || {
-                    let searchResult = search_worker(clonedCurrentPath, clonedSearchString, cloned_tx);
+                    search_worker(clonedCurrentPath, clonedSearchString, cloned_tx);
                 });
-                //we wait for a communication from the thread
+                
 
             }
-            if(searchActive){
-                let searchResult = rx.try_recv();
-                match searchResult {
-                    Ok(result) => {
-                        //we add the new files to the list
-                        for file in result {
-                            filtered_files_ref.push(file);
-                        }
-                                        }
-                    Err(e) => {
-                        eprintln!("Error: {:?}", e);
+            if searchActive {
+                if let Ok(result) = rx.try_recv() {
+                    for file in result.iter() {
+                        filtered_files_ref.push(file.clone());
                     }
                 }
             }
@@ -223,16 +216,17 @@ fn get_filtered_content_dir(
 }
 
 fn search_worker(
-    topFolder: PathBuf,
+    top_folder: PathBuf,
     filter: String,
     tx: mpsc::Sender<Vec<File>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut files_filtered = Vec::new();
     let mut folders = Vec::new();
-    folders.push(topFolder.clone());
+    folders.push(top_folder.clone());
     let mut explored_folders = Vec::new();
-    let copy_top_folder = topFolder.clone();
+    let copy_top_folder = top_folder.clone();
     let top_folder_as_str = copy_top_folder.to_str().unwrap_or_default();
+    println!("filter: {:?}", filter);
     while !folders.is_empty() {
         if let Some(folder) = folders.pop() {
             files_filtered.clear();
@@ -262,9 +256,9 @@ fn search_worker(
     Ok(())
 }
 
-fn extract_subfolders(topFolder: &PathBuf) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
+fn extract_subfolders(top_folder: &PathBuf) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
     let mut folders = Vec::new();
-    for entry in std::fs::read_dir(topFolder)? {
+    for entry in std::fs::read_dir(top_folder)? {
         let entry = entry?;
         if entry.metadata()?.is_dir() {
             folders.push(entry.path());
