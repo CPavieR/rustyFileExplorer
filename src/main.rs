@@ -4,8 +4,8 @@
 use core::{alloc, str};
 
 use std::path::PathBuf;
-use std::thread;
 use std::sync::mpsc;
+use std::thread;
 #[repr(u8)]
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 enum TypeFile {
@@ -29,10 +29,10 @@ fn main() -> eframe::Result {
         viewport: egui::ViewportBuilder::default().with_inner_size([320.0, 240.0]),
         ..Default::default()
     };
-    let mut files : Vec<File> = Vec::new();
+    let mut files: Vec<File> = Vec::new();
     let mut filtered_files_ref: Vec<File> = Vec::new();
     let mut currentPath = getCurrentDir().unwrap_or_default();
-    match getContentDir(&currentPath) {
+    match getFilteredContentDir(&currentPath, &"".to_string(), false) {
         Ok(files_list) => {
             files = files_list.clone();
             filtered_files_ref = files_list.clone();
@@ -41,29 +41,48 @@ fn main() -> eframe::Result {
             eprintln!("Error: {:?}", e);
         }
     }
-    //let mut files = getContentDir(&currentPath).unwrap_or_default();
+    //we create a mspc channel to communicate with the search worker
+    let (tx, rx): (mpsc::Sender<String>, mpsc::Receiver<String>) = mpsc::channel();
+
+    let mut files = getFilteredContentDir(&currentPath, &"".to_string(), false).unwrap_or_default();
     let mut latestScannedFolder = currentPath.clone();
     let mut searchString = "".to_string();
     //getContentDir(&currentPath).;
     eframe::run_simple_native("The rusty explorer", options, move |ctx, _frame| {
         egui::CentralPanel::default().show(ctx, |ui| {
             if ui.button("Refresh").clicked() {
-                files = getContentDir(&currentPath).unwrap();
+                files = getFilteredContentDir(&currentPath, &"".to_string(), false).unwrap();
             }
             if latestScannedFolder != currentPath {
-                files = getContentDir(&currentPath).unwrap();
+                files = getFilteredContentDir(&currentPath, &"".to_string(), false).unwrap();
                 latestScannedFolder = currentPath.clone();
             }
             ui.heading("The rusty explorer");
             ui.label(format!("Current path: {:?}", currentPath.to_str().unwrap()));
-            let searchField = ui.text_edit_singleline(&mut searchString).on_hover_text("Search for files");
-            
-            if(searchField.changed() &&searchString != ""){
-                filtered_files_ref = files.iter().filter(|file| file.name.contains(&searchString))
-                    .cloned().collect();
-                
+            let searchField = ui
+                .text_edit_singleline(&mut searchString)
+                .on_hover_text("Search for files");
+
+            if (searchField.changed() && searchString != "") {
+                //we initialize the thread
+                let clonedCurrentPath = currentPath.clone();
+                let cloned_tx = tx.clone();
+                let searchWorker = thread::spawn(move || {
+                    let searchResult = searchWorker(clonedCurrentPath, "test".to_string(), cloned_tx);
+                });
+                //we wait for a communication from the thread
+                let searchResult = rx.recv();
+                match searchResult {
+                    Ok(result) => {
+                        //we add the new files to the list
+                        filtered_files_ref= filtered_files_ref + result;
+                                        }
+                    Err(e) => {
+                        eprintln!("Error: {:?}", e);
+                    }
+                }
             }
-            if(searchField.changed() && (searchString == "")){
+            if (searchField.changed() && (searchString == "")) {
                 filtered_files_ref = files.clone();
             }
             ui.separator();
@@ -91,7 +110,11 @@ fn main() -> eframe::Result {
                                     fileRow.col(|ui| {
                                         if ui.button(file.name.clone()).clicked() {
                                             currentPath = file.completePath.clone();
-                                            match getContentDir(&currentPath) {
+                                            match getFilteredContentDir(
+                                                &currentPath,
+                                                &"".to_string(),
+                                                false,
+                                            ) {
                                                 Ok(files_list) => {
                                                     files = files_list.clone();
                                                     filtered_files_ref = files_list.clone();
@@ -124,9 +147,8 @@ fn main() -> eframe::Result {
                     });
                 });
             for file in files.iter() {
-                                    if file.fileType == TypeFile::Folder {
-
-                        }}
+                if file.fileType == TypeFile::Folder {}
+            }
         });
     })
 }
@@ -138,15 +160,19 @@ fn getCurrentDir() -> std::io::Result<std::path::PathBuf> {
     Ok(appFile.to_path_buf())
 }
 
-fn getContentDir(path: &PathBuf) -> Result<Vec<File>, std::io::Error> {
+fn getFilteredContentDir(
+    DirPath: &PathBuf,
+    filter: &String,
+    filterActive: bool,
+) -> Result<Vec<File>, std::io::Error> {
     let mut files = Vec::new();
-    files.push( File {
+    files.push(File {
         name: "..".to_string(),
         fileType: TypeFile::Folder,
         size: 0,
-        completePath: path.clone().parent().unwrap().to_path_buf(),
+        completePath: DirPath.clone().parent().unwrap().to_path_buf(),
     });
-    for entry in std::fs::read_dir(path).unwrap() {
+    for entry in std::fs::read_dir(DirPath).unwrap() {
         let entry = entry.unwrap();
         let path = entry.file_name();
         let path = path.to_str().unwrap().to_string();
@@ -157,76 +183,68 @@ fn getContentDir(path: &PathBuf) -> Result<Vec<File>, std::io::Error> {
             TypeFile::File
         };
         let absolutePath = entry.path();
-        files.push(File {
-            name: path,
-            fileType: fileType,
-            size: fileSize,
-            completePath: absolutePath,
-        });
+        if (filterActive && path.contains(filter)) {
+            files.push(File {
+                name: absolutePath
+                    .to_str()
+                    .unwrap()
+                    .replace(DirPath.to_str().unwrap(), ""),
+                fileType: fileType,
+                completePath: absolutePath,
+                size: fileSize,
+            });
+        } else {
+            if (!filterActive) {
+                files.push(File {
+                    name: path,
+                    fileType: fileType,
+                    completePath: absolutePath,
+                    size: fileSize,
+                });
+            }
+        }
     }
     Ok(files)
 }
 
-fn searchWorker(topFolder : PathBuf, filter : String, tx: mpsc::Sender<String>) {
-    let mut files = Vec::new();
-    for entry in std::fs::read_dir(topFolder).unwrap() {
-        let entry = entry.unwrap();
-        let path = entry.file_name();
-        let path = path.to_str().unwrap().to_string();
-        let fileSize = entry.metadata().unwrap().len();
-        let fileType = if entry.metadata().unwrap().is_dir() {
-            TypeFile::Folder
-        } else {
-            TypeFile::File
-        };
-        let absolutePath = entry.path();
-        files.push(File {
-            name: path,
-            fileType: fileType,
-            size: fileSize,
-            completePath: absolutePath,
-        });
+fn searchWorker(
+    topFolder: PathBuf,
+    filter: String,
+    tx: mpsc::Sender<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut filesFiltered = Vec::new();
+    let mut folders = extractSubfolders(&topFolder)?;
+    let mut exploredFolders = Vec::new();
+    
+    while !folders.is_empty() {
+        if let Some(folder) = folders.pop() {
+            filesFiltered.clear();
+            let files = getFilteredContentDir(&folder, &filter, true)?;
+            for file in files {
+                filesFiltered.push(file);
+            }
+            exploredFolders.push(folder.clone());
+            let subFolders = extractSubfolders(&folder)?;
+            for subFolder in subFolders {
+                if !exploredFolders.contains(&subFolder) {
+                    folders.push(subFolder);
+                }
+            }
+            //we send the files to the main thread
+            tx.send(filesFiltered);
+
+        }
     }
+    Ok(())
 }
 
-
-fn extractSubfolders(topFolder : PathBuf) -> Vec<PathBuf> {
+fn extractSubfolders(topFolder: &PathBuf) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
     let mut folders = Vec::new();
-    for entry in std::fs::read_dir(topFolder).unwrap() {
-        let entry = entry.unwrap();
-        let path = entry.file_name();
-        let path = path.to_str().unwrap().to_string();
-        let fileType = if entry.metadata().unwrap().is_dir() {
-            TypeFile::Folder
-        } else {
-            TypeFile::File
-        };
-        if fileType == TypeFile::Folder {
+    for entry in std::fs::read_dir(topFolder)? {
+        let entry = entry?;
+        if entry.metadata()?.is_dir() {
             folders.push(entry.path());
         }
     }
-    folders
-}
-fn getFileteredFiles(topFolder : PathBuf, filter : String) -> Vec<File> {
-    let mut files = Vec::new();
-    for entry in std::fs::read_dir(topFolder).unwrap() {
-        let entry = entry.unwrap();
-        let path = entry.file_name();
-        path = path.to_str().unwrap().to_string();
-        let fileSize = entry.metadata().unwrap().len();
-        let fileType = if entry.metadata().unwrap().is_dir() {
-            TypeFile::Folder
-        } else {
-            TypeFile::File
-        };
-        let absolutePath = entry.path();
-        if(path.contains(&filter)){
-        files.push(File {
-            name: path,
-            fileType: fileType,
-            size: fileSize,
-            completePath: absolutePath,
-        });
-    }
-    files
+    Ok(folders)
 }
