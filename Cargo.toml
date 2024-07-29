@@ -1,0 +1,12 @@
+[package]
+name = "rustyFileExplorer"
+version = "0.1.0"
+edition = "2021"
+authors = ["Clément Pavie Routaboul"]
+description = "A simple file explorer made with Rust and Egui"
+license = "MIT"
+
+[dependencies]
+egui = "0.28.1"
+eframe = "0.28.1"
+egui_extras = "0.28.1"
