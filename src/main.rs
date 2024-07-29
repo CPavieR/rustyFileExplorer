@@ -32,6 +32,7 @@ fn main() -> eframe::Result {
     let mut files: Vec<File> = Vec::new();
     let mut filtered_files_ref: Vec<File> = Vec::new();
     let mut currentPath = getCurrentDir().unwrap_or_default();
+    let mut searchActive = false;
     match getFilteredContentDir(&currentPath, &"".to_string(), false) {
         Ok(files_list) => {
             files = files_list.clone();
@@ -42,7 +43,7 @@ fn main() -> eframe::Result {
         }
     }
     //we create a mspc channel to communicate with the search worker
-    let (tx, rx): (mpsc::Sender<String>, mpsc::Receiver<String>) = mpsc::channel();
+    let (tx, rx): (mpsc::Sender<Vec<File>>, mpsc::Receiver<Vec<File>>) = mpsc::channel();
 
     let mut files = getFilteredContentDir(&currentPath, &"".to_string(), false).unwrap_or_default();
     let mut latestScannedFolder = currentPath.clone();
@@ -64,6 +65,13 @@ fn main() -> eframe::Result {
                 .on_hover_text("Search for files");
 
             if (searchField.changed() && searchString != "") {
+                if(!searchActive){
+                    searchActive = true;
+                    
+                    
+                }
+                filtered_files_ref.clear();
+
                 //we initialize the thread
                 let clonedCurrentPath = currentPath.clone();
                 let cloned_tx = tx.clone();
@@ -71,20 +79,25 @@ fn main() -> eframe::Result {
                     let searchResult = searchWorker(clonedCurrentPath, "test".to_string(), cloned_tx);
                 });
                 //we wait for a communication from the thread
-                let searchResult = rx.recv();
-                match searchResult {
-                    Ok(result) => {
-                        //we add the new files to the list
-                        filtered_files_ref= filtered_files_ref + result;
-                                        }
-                    Err(e) => {
-                        eprintln!("Error: {:?}", e);
+
+            }
+            let searchResult = rx.try_recv();
+            match searchResult {
+                Ok(result) => {
+                    //we add the new files to the list
+                    for file in result {
+                        filtered_files_ref.push(file);
                     }
+                                    }
+                Err(e) => {
+                    eprintln!("Error: {:?}", e);
                 }
             }
             if (searchField.changed() && (searchString == "")) {
                 filtered_files_ref = files.clone();
+                searchActive = false;
             }
+
             ui.separator();
             let mut table = TableBuilder::new(ui)
                 .column(Column::remainder().at_least(100.0))
@@ -210,10 +223,13 @@ fn getFilteredContentDir(
 fn searchWorker(
     topFolder: PathBuf,
     filter: String,
-    tx: mpsc::Sender<String>,
+    tx: mpsc::Sender<Vec<File>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut filesFiltered = Vec::new();
     let mut folders = extractSubfolders(&topFolder)?;
+    println!("searching in {:?}", topFolder);
+    println!("searching for {:?}", filter);
+    println!("searching in {:?}", folders);
     let mut exploredFolders = Vec::new();
     
     while !folders.is_empty() {
@@ -231,7 +247,7 @@ fn searchWorker(
                 }
             }
             //we send the files to the main thread
-            tx.send(filesFiltered);
+            tx.send(filesFiltered.clone());
 
         }
     }
