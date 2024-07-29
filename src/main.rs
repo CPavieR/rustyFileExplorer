@@ -22,18 +22,18 @@ struct File {
 }
 use eframe::egui;
 use egui_extras::{Column, TableBuilder};
+
 fn main() -> eframe::Result {
     //env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
-
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([320.0, 240.0]),
         ..Default::default()
     };
     let mut files: Vec<File> = Vec::new();
     let mut filtered_files_ref: Vec<File> = Vec::new();
-    let mut currentPath = getCurrentDir().unwrap_or_default();
+    let mut currentPath = get_current_dir().unwrap_or_default();
     let mut searchActive = false;
-    match getFilteredContentDir(&currentPath, &"".to_string(), false) {
+    match get_filtered_content_dir(&currentPath, &"".to_string(), false) {
         Ok(files_list) => {
             files = files_list.clone();
             filtered_files_ref = files_list.clone();
@@ -44,18 +44,18 @@ fn main() -> eframe::Result {
     }
     //we create a mspc channel to communicate with the search worker
     let (tx, rx): (mpsc::Sender<Vec<File>>, mpsc::Receiver<Vec<File>>) = mpsc::channel();
-
-    let mut files = getFilteredContentDir(&currentPath, &"".to_string(), false).unwrap_or_default();
+    
+    let mut files = get_filtered_content_dir(&currentPath, &"".to_string(), false).unwrap_or_default();
     let mut latestScannedFolder = currentPath.clone();
     let mut searchString = "".to_string();
     //getContentDir(&currentPath).;
     eframe::run_simple_native("The rusty explorer", options, move |ctx, _frame| {
         egui::CentralPanel::default().show(ctx, |ui| {
             if ui.button("Refresh").clicked() {
-                files = getFilteredContentDir(&currentPath, &"".to_string(), false).unwrap();
+                files = get_filtered_content_dir(&currentPath, &"".to_string(), false).unwrap();
             }
             if latestScannedFolder != currentPath {
-                files = getFilteredContentDir(&currentPath, &"".to_string(), false).unwrap();
+                files = get_filtered_content_dir(&currentPath, &"".to_string(), false).unwrap();
                 latestScannedFolder = currentPath.clone();
             }
             ui.heading("The rusty explorer");
@@ -75,22 +75,25 @@ fn main() -> eframe::Result {
                 //we initialize the thread
                 let clonedCurrentPath = currentPath.clone();
                 let cloned_tx = tx.clone();
+                let clonedSearchString = searchString.clone();
                 let searchWorker = thread::spawn(move || {
-                    let searchResult = searchWorker(clonedCurrentPath, "test".to_string(), cloned_tx);
+                    let searchResult = search_worker(clonedCurrentPath, clonedSearchString, cloned_tx);
                 });
                 //we wait for a communication from the thread
 
             }
-            let searchResult = rx.try_recv();
-            match searchResult {
-                Ok(result) => {
-                    //we add the new files to the list
-                    for file in result {
-                        filtered_files_ref.push(file);
+            if(searchActive){
+                let searchResult = rx.try_recv();
+                match searchResult {
+                    Ok(result) => {
+                        //we add the new files to the list
+                        for file in result {
+                            filtered_files_ref.push(file);
+                        }
+                                        }
+                    Err(e) => {
+                        eprintln!("Error: {:?}", e);
                     }
-                                    }
-                Err(e) => {
-                    eprintln!("Error: {:?}", e);
                 }
             }
             if (searchField.changed() && (searchString == "")) {
@@ -123,7 +126,7 @@ fn main() -> eframe::Result {
                                     fileRow.col(|ui| {
                                         if ui.button(file.name.clone()).clicked() {
                                             currentPath = file.completePath.clone();
-                                            match getFilteredContentDir(
+                                            match get_filtered_content_dir(
                                                 &currentPath,
                                                 &"".to_string(),
                                                 false,
@@ -166,53 +169,52 @@ fn main() -> eframe::Result {
     })
 }
 
-fn getCurrentDir() -> std::io::Result<std::path::PathBuf> {
-    let appFile = std::env::current_exe()?;
-    let appFile = appFile.canonicalize()?;
-    let appFile = appFile.parent().unwrap();
-    Ok(appFile.to_path_buf())
+fn get_current_dir() -> std::io::Result<std::path::PathBuf> {
+    let relative_app_path = std::env::current_exe()?;
+    let absolute_app_path = relative_app_path.canonicalize()?;
+    let path_file = absolute_app_path.parent().unwrap();
+    Ok(path_file.to_path_buf())
 }
 
-fn getFilteredContentDir(
-    DirPath: &PathBuf,
+fn get_filtered_content_dir(
+    dir_path: &PathBuf,
     filter: &String,
-    filterActive: bool,
+    filter_active: bool,
 ) -> Result<Vec<File>, std::io::Error> {
     let mut files = Vec::new();
-    files.push(File {
-        name: "..".to_string(),
-        fileType: TypeFile::Folder,
-        size: 0,
-        completePath: DirPath.clone().parent().unwrap().to_path_buf(),
-    });
-    for entry in std::fs::read_dir(DirPath).unwrap() {
+    if(!filter_active){
+        files.push(File {
+            name: "..".to_string(),
+            fileType: TypeFile::Folder,
+            size: 0,
+            completePath: dir_path.clone().parent().unwrap().to_path_buf(),
+        });
+    }
+    for entry in std::fs::read_dir(dir_path).unwrap() {
         let entry = entry.unwrap();
-        let path = entry.file_name();
-        let path = path.to_str().unwrap().to_string();
-        let fileSize = entry.metadata().unwrap().len();
-        let fileType = if entry.metadata().unwrap().is_dir() {
+        let filename = entry.file_name();
+        let filename = filename.to_str().unwrap().to_string();
+        let file_size = entry.metadata().unwrap().len();
+        let file_type = if entry.metadata().unwrap().is_dir() {
             TypeFile::Folder
         } else {
             TypeFile::File
         };
-        let absolutePath = entry.path();
-        if (filterActive && path.contains(filter)) {
+        let absolute_path = entry.path();
+        if filter_active && filename.contains(filter) {
             files.push(File {
-                name: absolutePath
-                    .to_str()
-                    .unwrap()
-                    .replace(DirPath.to_str().unwrap(), ""),
-                fileType: fileType,
-                completePath: absolutePath,
-                size: fileSize,
+                name: absolute_path.to_str().unwrap_or_default().to_owned(),
+                fileType: file_type,
+                completePath: absolute_path,
+                size: file_size,
             });
         } else {
-            if (!filterActive) {
+            if (!filter_active) {
                 files.push(File {
-                    name: path,
-                    fileType: fileType,
-                    completePath: absolutePath,
-                    size: fileSize,
+                    name: filename,
+                    fileType: file_type,
+                    completePath: absolute_path,
+                    size: file_size,
                 });
             }
         }
@@ -220,41 +222,47 @@ fn getFilteredContentDir(
     Ok(files)
 }
 
-fn searchWorker(
+fn search_worker(
     topFolder: PathBuf,
     filter: String,
     tx: mpsc::Sender<Vec<File>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut filesFiltered = Vec::new();
-    let mut folders = extractSubfolders(&topFolder)?;
-    println!("searching in {:?}", topFolder);
-    println!("searching for {:?}", filter);
-    println!("searching in {:?}", folders);
-    let mut exploredFolders = Vec::new();
-    
+    let mut files_filtered = Vec::new();
+    let mut folders = Vec::new();
+    folders.push(topFolder.clone());
+    let mut explored_folders = Vec::new();
+    let copy_top_folder = topFolder.clone();
+    let top_folder_as_str = copy_top_folder.to_str().unwrap_or_default();
     while !folders.is_empty() {
         if let Some(folder) = folders.pop() {
-            filesFiltered.clear();
-            let files = getFilteredContentDir(&folder, &filter, true)?;
+            files_filtered.clear();
+            let files = get_filtered_content_dir(&folder, &filter, true)?;
             for file in files {
-                filesFiltered.push(file);
+                let _ = file.name.replace(top_folder_as_str, "");
+                files_filtered.push(file);
             }
-            exploredFolders.push(folder.clone());
-            let subFolders = extractSubfolders(&folder)?;
-            for subFolder in subFolders {
-                if !exploredFolders.contains(&subFolder) {
-                    folders.push(subFolder);
+            explored_folders.push(folder.clone());
+            let sub_folders = extract_subfolders(&folder)?;
+            for sub_folder in sub_folders {
+                if !explored_folders.contains(&sub_folder) {
+                    folders.push(sub_folder);
                 }
             }
             //we send the files to the main thread
-            tx.send(filesFiltered.clone());
+            let res = tx.send(files_filtered.clone());
+            match res {
+                Ok(_) => {}
+                Err(e) => {
+                    eprintln!("Error: {:?}", e);
+                }
+            }
 
         }
     }
     Ok(())
 }
 
-fn extractSubfolders(topFolder: &PathBuf) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
+fn extract_subfolders(topFolder: &PathBuf) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
     let mut folders = Vec::new();
     for entry in std::fs::read_dir(topFolder)? {
         let entry = entry?;
