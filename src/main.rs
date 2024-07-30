@@ -59,12 +59,12 @@ fn main() -> eframe::Result {
             ui.label(format!("Current path: {:?}", currentPath.to_str().unwrap()));
             let searchField = ui.text_edit_singleline(&mut searchString).on_hover_text("Search for files");
             
-            if(searchField.changed() &&searchString != ""){
+            if(searchField.changed() &&!searchString.is_empty()){
                 filtered_files_ref = files.iter().filter(|file| file.name.contains(&searchString))
                     .cloned().collect();
                 
             }
-            if(searchField.changed() && (searchString == "")){
+            if(searchField.changed() && (searchString.is_empty())){
                 filtered_files_ref = files.clone();
             }
             ui.separator();
@@ -162,7 +162,7 @@ fn getFilteredContentDir(
             TypeFile::File
         };
         let absolutePath = entry.path();
-        if (filterActive && path.contains(filter)) {
+        if (filterActive && path.to_lowercase().contains(&filter.to_lowercase())) {
             files.push(File {
                 name: absolutePath
                     .to_str()
