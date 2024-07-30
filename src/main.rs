@@ -4,8 +4,8 @@
 
 
 use std::path::PathBuf;
-
-
+use sha2;
+use clipboard::{ClipboardContext, ClipboardProvider};
 #[repr(u8)]
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 enum TypeFile {
@@ -21,6 +21,7 @@ struct File {
     complete_path: PathBuf,
 }
 use eframe::egui;
+use egui::{Color32, RichText};
 use egui_extras::{Column, TableBuilder};
 fn main() -> eframe::Result {
     //env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
@@ -72,6 +73,7 @@ fn main() -> eframe::Result {
                 .column(Column::remainder().at_least(100.0))
                 .column(Column::remainder().at_least(100.0))
                 .column(Column::remainder().at_least(100.0))
+                .column(Column::remainder().at_least(100.0))
                 .header(20.0, |mut header| {
                     header.col(|ui| {
                         ui.strong("Files");
@@ -81,6 +83,9 @@ fn main() -> eframe::Result {
                     });
                     header.col(|ui| {
                         ui.strong("size");
+                    });
+                    header.col(|ui| {
+                        ui.strong("actions");
                     });
                 })
                 .body(|body| {
@@ -118,6 +123,22 @@ fn main() -> eframe::Result {
                                 });
                                 file_row.col(|ui| {
                                     ui.label(file.size.to_string());
+                                });
+                                file_row.col(|ui| {
+                                    //we add the duplicate button and delete button in an horizontal line
+                                    ui.horizontal(|ui| {
+                                        if ui.button(RichText::new("Copy path").color(Color32::BLUE)).clicked() {
+                                            copy_file_to_clipboard(file.complete_path.clone());
+                                        }
+                                        /*if ui.button(RichText::new("Duplicate").color(Color32::GREEN)).clicked() {
+                                            duplicate_file(file.complete_path.clone());
+                                        }*/
+                                        /*if ui.button(RichText::new("Delete").color(Color32::RED)).clicked() {
+                                            delete_file(file.complete_path.clone());
+                                        }*/
+                                    });
+
+
                                 });
                             }
                             None => {}
@@ -205,3 +226,36 @@ fn extract_subfolders(top_folder : PathBuf) -> Vec<PathBuf> {
     }
     folders
 }
+
+fn copy_file_to_clipboard(file_path : PathBuf) {
+    let file_path_str = file_path.to_str().unwrap();
+    let mut clipboard: ClipboardContext;
+    match clipboard::ClipboardProvider::new() {
+        Ok(clip) => {
+            clipboard=clip;
+            clipboard.set_contents(file_path_str.to_string()).unwrap();
+        }
+        Err(e) => {
+            eprintln!("Error: {:?}", e);
+        }
+    }
+}
+
+fn delete_file(file_path : PathBuf) {
+    std::fs::remove_file(file_path).unwrap();
+}
+fn duplicate_file(file_path : PathBuf) {
+    if(!file_path.is_dir()){
+    let file_path_str = file_path.to_str().unwrap();
+    let file_path_str = file_path_str.to_string();
+    let file_path_str = file_path_str.replace(".", "_copy.");
+    std::fs::copy(file_path, file_path_str).unwrap();
+}}
+/*
+fn calculate_file_hash(file_path : PathBuf) -> String {
+    let file = std::fs::File::open(file_path).unwrap();
+    let mut hasher = sha2::Sha256::new();
+    std::io::copy(&mut file, &mut hasher).unwrap();
+    let hash = hasher.finalize();
+    format!("{:x}", hash)
+}*/
