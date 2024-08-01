@@ -4,7 +4,7 @@
 
 
 use std::path::PathBuf;
-use sha2;
+
 use clipboard::{ClipboardContext, ClipboardProvider};
 #[repr(u8)]
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
@@ -21,15 +21,14 @@ struct File {
     complete_path: PathBuf,
 }
 use eframe::egui;
-use egui::{Color32, IconData, RichText, ViewportBuilder};
+use egui::{Color32, IconData, RichText};
 use egui_extras::{Column, TableBuilder};
 const ICON: &[u8; 649] = include_bytes!("../assets/icon.png");
 // ...
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([900.0, 900.0]).with_title("The rusty explorer".to_string()).with_icon(IconData {
-            rgba: ICON.to_vec(),    //env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
-
+            rgba: ICON.to_vec(),
             width: 32,
             height: 32,
         }),
@@ -71,7 +70,7 @@ fn main() -> eframe::Result {
                 filtered_files_ref = files.clone();
             }
             ui.separator();
-            let mut table = TableBuilder::new(ui)
+            let _table = TableBuilder::new(ui)
                 .column(Column::remainder().at_least(100.0))
                 .column(Column::remainder().at_least(100.0))
                 .column(Column::remainder().at_least(100.0))
@@ -136,7 +135,7 @@ fn main() -> eframe::Result {
                                             duplicate_file(file.complete_path.clone());
                                         }
                                         /**/if ui.button(RichText::new("Delete").color(Color32::RED)).clicked() {
-                                            if(file.file_type == TypeFile::File){
+                                            if file.file_type == TypeFile::File {
                                                 delete_file(file.complete_path.clone());
                                             }
                                             delete_file(file.complete_path.clone());
@@ -248,7 +247,7 @@ fn delete_file(file_path : PathBuf) {
     std::fs::remove_file(file_path).unwrap();
 }
 fn duplicate_file(file_path : PathBuf) {
-    if(!file_path.is_dir()){
+    if !file_path.is_dir() {
     let file_path_str = file_path.to_str().unwrap();
     let file_path_str = file_path_str.to_string();
     let file_path_str = match file_path_str.contains(".") {
