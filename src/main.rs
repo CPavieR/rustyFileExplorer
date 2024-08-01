@@ -21,13 +21,18 @@ struct File {
     complete_path: PathBuf,
 }
 use eframe::egui;
-use egui::{Color32, RichText};
+use egui::{Color32, IconData, RichText, ViewportBuilder};
 use egui_extras::{Column, TableBuilder};
+const ICON: &[u8; 649] = include_bytes!("../assets/icon.png");
+// ...
 fn main() -> eframe::Result {
-    //env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
-
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([900.0, 900.0]),
+        viewport: egui::ViewportBuilder::default().with_inner_size([900.0, 900.0]).with_title("The rusty explorer".to_string()).with_icon(IconData {
+            rgba: ICON.to_vec(),    //env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
+
+            width: 32,
+            height: 32,
+        }),
         ..Default::default()
     };
     let mut files : Vec<File> = Vec::new();
@@ -43,10 +48,7 @@ fn main() -> eframe::Result {
             eprintln!("Error: {:?}", e);
         }
     }
-    //let mut files = getContentDir(&currentPath).unwrap_or_default();
     let mut latest_scanned_folder = current_path.clone();
-    
-    //getContentDir(&currentPath).;
     eframe::run_simple_native("The rusty explorer", options, move |ctx, _frame| {
         egui::CentralPanel::default().show(ctx, |ui| {
             if ui.button("Refresh").clicked() {
@@ -138,11 +140,8 @@ fn main() -> eframe::Result {
                                                 delete_file(file.complete_path.clone());
                                             }
                                             delete_file(file.complete_path.clone());
-                                            //println!("Delete file {}", file.complete_path.to_str().unwrap());
                                         }
                                     });
-
-
                                 });
                             }
                             None => {}
