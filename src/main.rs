@@ -130,12 +130,16 @@ fn main() -> eframe::Result {
                                         if ui.button(RichText::new("Copy path").color(Color32::BLUE)).clicked() {
                                             copy_file_to_clipboard(file.complete_path.clone());
                                         }
-                                        /*if ui.button(RichText::new("Duplicate").color(Color32::GREEN)).clicked() {
+                                        if ui.button(RichText::new("Duplicate").color(Color32::GREEN)).clicked() {
                                             duplicate_file(file.complete_path.clone());
-                                        }*/
-                                        /*if ui.button(RichText::new("Delete").color(Color32::RED)).clicked() {
+                                        }
+                                        /**/if ui.button(RichText::new("Delete").color(Color32::RED)).clicked() {
+                                            if(file.file_type == TypeFile::File){
+                                                delete_file(file.complete_path.clone());
+                                            }
                                             delete_file(file.complete_path.clone());
-                                        }*/
+                                            //println!("Delete file {}", file.complete_path.to_str().unwrap());
+                                        }
                                     });
 
 
@@ -248,7 +252,10 @@ fn duplicate_file(file_path : PathBuf) {
     if(!file_path.is_dir()){
     let file_path_str = file_path.to_str().unwrap();
     let file_path_str = file_path_str.to_string();
-    let file_path_str = file_path_str.replace(".", "_copy.");
+    let file_path_str = match file_path_str.contains(".") {
+        true => file_path_str.replace(".", "_copy."),
+        false => file_path_str + "_copy",
+    };
     std::fs::copy(file_path, file_path_str).unwrap();
 }}
 /*
